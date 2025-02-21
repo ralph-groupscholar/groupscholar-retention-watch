@@ -1,0 +1,9 @@
+scholar_id,name,cohort,attendance_rate,engagement_score,last_checkin_date,milestone_count,risk_notes
+S-101,Amira Cole,Spring-2025,0.92,4.6,2026-01-28,2,
+S-102,Jonas Park,Spring-2025,0.76,3.9,2026-01-10,1,Missed two workshops
+S-103,Leila Mendez,Spring-2025,0.63,2.8,2025-12-20,0,No response to outreach
+S-104,Rowan Li,Fall-2024,0.84,4.2,2026-01-20,3,
+S-105,Ishaan Patel,Fall-2024,0.68,3.1,2025-12-15,0,Financial stress noted
+S-106,Kiara Singh,Fall-2024,0.95,4.9,2026-02-02,4,
+S-107,Zoe Alvarez,Winter-2025,0.81,3.4,2026-01-05,1,Needs schedule flexibility
+S-108,Micah Brown,Winter-2025,0.88,4.1,2026-01-25,2,
