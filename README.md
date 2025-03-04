@@ -5,6 +5,7 @@ Retention Watch is a local-first CLI that scores scholar retention risk from coh
 ## Features
 - Risk scoring based on attendance, engagement, recency, and milestone progress
 - High-risk roster with next check-in dates and due status
+- Risk driver summary (attendance, engagement, check-in recency, milestones)
 - Cohort-level risk distribution summaries
 - Optional JSON export for downstream reporting
 
@@ -26,6 +27,11 @@ Override the date and due-soon window:
 python3 retention_watch.py data/sample.csv --today 2026-02-07 --due-soon-days 10
 ```
 
+Limit the high-risk roster size:
+```bash
+python3 retention_watch.py data/sample.csv --max-high-risk 5
+```
+
 ## CSV Format
 Required columns:
 - scholar_id
@@ -40,7 +46,7 @@ Optional:
 - risk_notes
 
 ## Output
-The CLI prints a summary with total counts, average metrics, risk mix, check-in status, cohort distribution, and a high-risk roster. JSON output mirrors the same data in structured form.
+The CLI prints a summary with total counts, average metrics, risk mix, check-in status, top risk drivers, cohort distribution, and a high-risk roster. JSON output mirrors the same data in structured form and includes driver counts plus roster limits.
 
 ## Tech
 - Python 3

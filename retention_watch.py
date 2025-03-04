@@ -50,6 +50,29 @@ class ScholarRecord:
             return "medium"
         return "low"
 
+    def risk_drivers(self, today: date) -> List[str]:
+        drivers = []
+        if self.attendance_rate < 0.70:
+            drivers.append("low_attendance")
+        elif self.attendance_rate < 0.85:
+            drivers.append("soft_attendance")
+
+        if self.engagement_score < 3.0:
+            drivers.append("low_engagement")
+        elif self.engagement_score < 4.0:
+            drivers.append("soft_engagement")
+
+        days_since = (today - self.last_checkin_date).days
+        if days_since > 30:
+            drivers.append("stale_checkin")
+        elif days_since > 14:
+            drivers.append("aging_checkin")
+
+        if self.milestone_count < 1:
+            drivers.append("no_milestones")
+
+        return drivers
+
     def next_checkin_date(self, today: date) -> date:
         tier = self.risk_tier(today)
         if tier == "high":
@@ -122,10 +145,16 @@ def load_records(path: str) -> List[ScholarRecord]:
     return records
 
 
-def summarize(records: List[ScholarRecord], today: date, due_soon_days: int) -> Dict:
+def summarize(
+    records: List[ScholarRecord],
+    today: date,
+    due_soon_days: int,
+    max_high_risk: int,
+) -> Dict:
     tiers = {"high": [], "medium": [], "low": []}
     by_cohort: Dict[str, Dict[str, int]] = {}
     due_status = {"overdue": 0, "due_soon": 0, "upcoming": 0}
+    driver_counts: Dict[str, int] = {}
 
     for record in records:
         tier = record.risk_tier(today)
@@ -138,10 +167,16 @@ def summarize(records: List[ScholarRecord], today: date, due_soon_days: int) -> 
         status = record.due_status(today, due_soon_days)
         due_status[status] += 1
 
+        for driver in record.risk_drivers(today):
+            driver_counts[driver] = driver_counts.get(driver, 0) + 1
+
     def avg(field_fn):
         if not records:
             return 0.0
         return round(sum(field_fn(r) for r in records) / len(records), 2)
+
+    high_risk_sorted = sorted(tiers["high"], key=lambda x: x.risk_score(today), reverse=True)
+    high_risk_list = high_risk_sorted[:max_high_risk] if max_high_risk else high_risk_sorted
 
     summary = {
         "total_scholars": len(records),
@@ -150,6 +185,10 @@ def summarize(records: List[ScholarRecord], today: date, due_soon_days: int) -> 
         "risk_counts": {k: len(v) for k, v in tiers.items()},
         "due_status": due_status,
         "by_cohort": by_cohort,
+        "risk_driver_counts": dict(sorted(driver_counts.items(), key=lambda item: item[1], reverse=True)),
+        "high_risk_total": len(tiers["high"]),
+        "high_risk_limit": max_high_risk,
+        "high_risk_truncated": max_high_risk > 0 and len(tiers["high"]) > max_high_risk,
         "high_risk": [
             {
                 "scholar_id": r.scholar_id,
@@ -161,9 +200,10 @@ def summarize(records: List[ScholarRecord], today: date, due_soon_days: int) -> 
                 "last_checkin_date": r.last_checkin_date.strftime(DATE_FMT),
                 "next_checkin_date": r.next_checkin_date(today).strftime(DATE_FMT),
                 "due_status": r.due_status(today, due_soon_days),
+                "risk_drivers": r.risk_drivers(today),
                 "risk_notes": r.risk_notes,
             }
-            for r in sorted(tiers["high"], key=lambda x: x.risk_score(today), reverse=True)
+            for r in high_risk_list
         ],
     }
     return summary
@@ -191,6 +231,12 @@ def render_console(summary: Dict, due_soon_days: int, today: date) -> str:
             for status in ("overdue", "due_soon", "upcoming")
         )
     )
+    lines.append("Top risk drivers:")
+    if summary["risk_driver_counts"]:
+        for driver, count in summary["risk_driver_counts"].items():
+            lines.append(f"- {driver.replace('_', ' ')}: {count}")
+    else:
+        lines.append("- None")
     lines.append("")
     lines.append("Cohort risk distribution:")
     for cohort, counts in sorted(summary["by_cohort"].items()):
@@ -200,18 +246,28 @@ def render_console(summary: Dict, due_soon_days: int, today: date) -> str:
         )
 
     lines.append("")
-    lines.append("High risk roster:")
+    if summary["high_risk_truncated"]:
+        lines.append(
+            f"High risk roster (top {summary['high_risk_limit']} of {summary['high_risk_total']}):"
+        )
+    else:
+        lines.append("High risk roster:")
     if not summary["high_risk"]:
         lines.append("- None")
     else:
         for record in summary["high_risk"]:
+            drivers = (
+                " | Drivers: " + ", ".join(d.replace("_", " ") for d in record["risk_drivers"])
+                if record["risk_drivers"]
+                else ""
+            )
             notes = f" | Notes: {record['risk_notes']}" if record["risk_notes"] else ""
             lines.append(
                 f"- {record['name']} ({record['scholar_id']}) "
                 f"[{record['cohort']}] score {record['risk_score']:.2f} "
                 f"attendance {record['attendance_rate']:.2f} engagement {record['engagement_score']:.2f} "
                 f"last check-in {record['last_checkin_date']} next {record['next_checkin_date']} "
-                f"status {record['due_status']}{notes}"
+                f"status {record['due_status']}{drivers}{notes}"
             )
 
     return "\n".join(lines)
@@ -237,6 +293,12 @@ def parse_args() -> argparse.Namespace:
         default=7,
         help="Days ahead to flag upcoming check-ins as due soon",
     )
+    parser.add_argument(
+        "--max-high-risk",
+        type=int,
+        default=10,
+        help="Limit high-risk roster output (0 for unlimited)",
+    )
     return parser.parse_args()
 
 
@@ -244,7 +306,7 @@ def main() -> None:
     args = parse_args()
     today = datetime.strptime(args.today, DATE_FMT).date() if args.today else datetime.now().date()
     records = load_records(args.csv)
-    summary = summarize(records, today, args.due_soon_days)
+    summary = summarize(records, today, args.due_soon_days, args.max_high_risk)
 
     if args.json_path:
         with open(args.json_path, "w", encoding="utf-8") as handle:
