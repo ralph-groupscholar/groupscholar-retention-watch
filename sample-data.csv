@@ -1,0 +1,11 @@
+scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags
+GS-101,Marina Lopez,Spring-2025,12,88,76,3.4,9,82,0
+GS-102,Jordan Patel,Spring-2025,34,62,51,2.3,26,58,1
+GS-103,Evelyn Cho,Spring-2025,7,91,84,3.7,4,90,0
+GS-104,DeShawn Reed,Fall-2024,44,58,49,2.1,30,52,2
+GS-105,Noah Kim,Fall-2024,18,75,69,3.0,12,70,1
+GS-106,Imani Brooks,Fall-2024,3,96,90,3.8,2,92,0
+GS-107,Amir Hassan,Spring-2025,28,70,61,2.7,21,64,1
+GS-108,Sofia Rivera,Summer-2025,9,92,79,3.5,6,85,0
+GS-109,Lucas Grant,Summer-2025,40,61,54,2.4,33,57,2
+GS-110,Priya Shah,Summer-2025,15,83,73,3.2,10,76,0

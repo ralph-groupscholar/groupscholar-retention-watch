@@ -1,53 +1,52 @@
 # Group Scholar Retention Watch
 
-Retention Watch is a local-first CLI that scores scholar retention risk from cohort check-in data. It highlights high-risk scholars, summarizes cohort health, and flags check-ins that are overdue or due soon.
+Retention Watch is a local-first CLI that turns a cohort CSV into a prioritized retention action queue. It computes a transparent risk score, summarizes risk tiers by cohort, and produces a ready-to-share action list for outreach planning.
 
 ## Features
-- Risk scoring based on attendance, engagement, recency, and milestone progress
-- High-risk roster with next check-in dates and due status
-- Risk driver summary (attendance, engagement, check-in recency, milestones)
-- Cohort-level risk distribution summaries
-- Optional JSON export for downstream reporting
+- Risk scoring across inactivity, attendance, engagement, GPA, survey sentiment, and open flags
+- Cohort summaries with tier counts and average risk
+- Action queue with suggested outreach focus
+- JSON output for downstream tooling
 
-## Requirements
-- Python 3.9+
+## Getting Started
 
-## Quickstart
+Build the CLI:
+
 ```bash
-python3 retention_watch.py data/sample.csv
+make
 ```
 
-Generate JSON output:
+Run against the sample data:
+
 ```bash
-python3 retention_watch.py data/sample.csv --json retention_summary.json
+./retention-watch sample-data.csv
 ```
 
-Override the date and due-soon window:
-```bash
-python3 retention_watch.py data/sample.csv --today 2026-02-07 --due-soon-days 10
-```
+JSON output:
 
-Limit the high-risk roster size:
 ```bash
-python3 retention_watch.py data/sample.csv --max-high-risk 5
+./retention-watch sample-data.csv -limit 5 -json
 ```
 
 ## CSV Format
-Required columns:
-- scholar_id
-- name
-- cohort
-- attendance_rate (0-1)
-- engagement_score (1-5)
-- last_checkin_date (YYYY-MM-DD)
-- milestone_count
 
-Optional:
-- risk_notes
+Required columns:
+
+```
+scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags
+```
 
 ## Output
-The CLI prints a summary with total counts, average metrics, risk mix, check-in status, top risk drivers, cohort distribution, and a high-risk roster. JSON output mirrors the same data in structured form and includes driver counts plus roster limits.
+
+The CLI prints:
+- Total records, average risk, and tier counts
+- Cohort-level summaries
+- A ranked action queue with suggested next steps
+
+## Notes
+- CSV parsing assumes no quoted commas.
+- Scores are capped to 0-100 for easy tiering.
 
 ## Tech
-- Python 3
-- Standard library only (csv, json, datetime)
+- C (C11)
+- Standard library only
