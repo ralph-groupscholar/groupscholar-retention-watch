@@ -7,6 +7,7 @@ Retention Watch is a local-first CLI that turns a cohort CSV into a prioritized 
 - Cohort summaries with tier counts and average risk
 - Action queue with suggested outreach focus
 - JSON output for downstream tooling
+- Cohort filter and CSV export for ops handoffs
 
 ## Getting Started
 
@@ -26,6 +27,12 @@ JSON output:
 
 ```bash
 ./retention-watch sample-data.csv -limit 5 -json
+```
+
+Export to CSV for downstream planning:
+
+```bash
+./retention-watch sample-data.csv -cohort "Fall 2024" -export retention-report.csv
 ```
 
 Full JSON output (includes all records):

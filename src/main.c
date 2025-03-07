@@ -113,7 +113,7 @@ static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count,
 
 static void print_usage(const char *prog) {
   printf("Group Scholar Retention Watch\n\n");
-  printf("Usage: %s <csv-file> [-limit N] [-json] [-json-full]\n\n", prog);
+  printf("Usage: %s <csv-file> [-limit N] [-cohort NAME] [-export PATH] [-json] [-json-full]\n\n", prog);
   printf("CSV columns:\n");
   printf("  scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n\n");
 }
@@ -128,9 +128,15 @@ int main(int argc, char **argv) {
   int limit = 10;
   int json = 0;
   int json_full = 0;
+  const char *cohort_filter = NULL;
+  const char *export_path = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-limit") == 0 && i + 1 < argc) {
       limit = atoi(argv[++i]);
+    } else if (strcmp(argv[i], "-cohort") == 0 && i + 1 < argc) {
+      cohort_filter = argv[++i];
+    } else if (strcmp(argv[i], "-export") == 0 && i + 1 < argc) {
+      export_path = argv[++i];
     } else if (strcmp(argv[i], "-json") == 0) {
       json = 1;
     } else if (strcmp(argv[i], "-json-full") == 0) {
@@ -196,6 +202,13 @@ int main(int argc, char **argv) {
     s.open_flags = parse_int(fields[9]);
     s.risk_score = compute_risk(&s);
 
+    if (cohort_filter && strcmp(s.cohort, cohort_filter) != 0) {
+      free(s.id);
+      free(s.name);
+      free(s.cohort);
+      continue;
+    }
+
     if (count >= capacity) {
       capacity = capacity == 0 ? 32 : capacity * 2;
       scholars = realloc(scholars, sizeof(Scholar) * capacity);
@@ -212,6 +225,24 @@ int main(int argc, char **argv) {
   }
 
   qsort(scholars, count, sizeof(Scholar), compare_risk_desc);
+
+  if (export_path) {
+    FILE *out = fopen(export_path, "w");
+    if (!out) {
+      perror("Failed to write export");
+      return 1;
+    }
+    fprintf(out, "scholar_id,name,cohort,risk_score,tier,action,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n");
+    for (int i = 0; i < count; i++) {
+      Scholar *s = &scholars[i];
+      fprintf(out,
+              "%s,%s,%s,%.1f,%s,%s,%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%d\n",
+              s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score),
+              action_hint(s), s->days_inactive, s->attendance_rate, s->engagement_score,
+              s->gpa, s->last_contact_days, s->survey_score, s->open_flags);
+    }
+    fclose(out);
+  }
 
   int high = 0;
   int medium = 0;
