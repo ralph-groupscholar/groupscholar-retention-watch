@@ -113,7 +113,7 @@ static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count,
 
 static void print_usage(const char *prog) {
   printf("Group Scholar Retention Watch\n\n");
-  printf("Usage: %s <csv-file> [-limit N] [-json]\n\n", prog);
+  printf("Usage: %s <csv-file> [-limit N] [-json] [-json-full]\n\n", prog);
   printf("CSV columns:\n");
   printf("  scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n\n");
 }
@@ -127,11 +127,15 @@ int main(int argc, char **argv) {
   const char *path = NULL;
   int limit = 10;
   int json = 0;
+  int json_full = 0;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-limit") == 0 && i + 1 < argc) {
       limit = atoi(argv[++i]);
     } else if (strcmp(argv[i], "-json") == 0) {
       json = 1;
+    } else if (strcmp(argv[i], "-json-full") == 0) {
+      json = 1;
+      json_full = 1;
     } else if (argv[i][0] != '-') {
       path = argv[i];
     }
@@ -261,7 +265,20 @@ int main(int argc, char **argv) {
              s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s),
              (i + 1 == max) ? "" : ",");
     }
-    printf("  ]\n");
+    printf("  ]");
+    if (json_full) {
+      printf(",\n  \"records\": [\n");
+      for (int i = 0; i < count; i++) {
+        Scholar *s = &scholars[i];
+        printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"days_inactive\": %.1f, \"attendance_rate\": %.1f, \"engagement_score\": %.1f, \"gpa\": %.2f, \"last_contact_days\": %.1f, \"survey_score\": %.1f, \"open_flags\": %d, \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}%s\n",
+               s->id, s->name, s->cohort, s->days_inactive, s->attendance_rate, s->engagement_score,
+               s->gpa, s->last_contact_days, s->survey_score, s->open_flags, s->risk_score,
+               risk_tier(s->risk_score), action_hint(s), (i + 1 == count) ? "" : ",");
+      }
+      printf("  ]\n");
+    } else {
+      printf("\n");
+    }
     printf("}\n");
   } else {
     printf("Group Scholar Retention Watch\n\n");

@@ -5,3 +5,7 @@
 - Implemented CSV ingestion, risk scoring, cohort summaries, and high-risk roster output.
 - Added JSON export option and sample dataset.
 - Documented usage and CSV schema in README.
+
+## 2026-02-08
+- Added -json-full option to export full record payload alongside summaries.
+- Documented full JSON output mode and validated build.

@@ -28,6 +28,12 @@ JSON output:
 ./retention-watch sample-data.csv -limit 5 -json
 ```
 
+Full JSON output (includes all records):
+
+```bash
+./retention-watch sample-data.csv -json-full
+```
+
 ## CSV Format
 
 Required columns:
