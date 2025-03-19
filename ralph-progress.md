@@ -13,3 +13,8 @@
 ## 2026-02-08
 - Added -json-full option to export full record payload alongside summaries.
 - Documented full JSON output mode and validated build.
+
+## 2026-02-08
+- Added Postgres sync script to persist retention runs and scholar snapshots.
+- Documented production database sync workflow in README.
+- Initialized retention_watch schema and seeded sample run data in production database.

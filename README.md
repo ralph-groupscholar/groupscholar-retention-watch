@@ -41,6 +41,27 @@ Full JSON output (includes all records):
 ./retention-watch sample-data.csv -json-full
 ```
 
+## Database Sync (Production)
+
+Retention Watch can persist run history to the Group Scholar Postgres database.
+This is intended for deployed/production usage only.
+
+Prereqs:
+- Python 3.11+
+- `psycopg` installed (`pip install psycopg[binary]`)
+- Environment variables set for the production database connection
+
+Schema + ingest:
+
+```bash
+python3 db_sync.py init
+python3 db_sync.py ingest sample-data.csv --notes "Seeded sample run"
+```
+
+Connection options (do not hardcode credentials):
+- `RETENTION_WATCH_DATABASE_URL` (preferred)
+- or `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
+
 ## CSV Format
 
 Required columns:
