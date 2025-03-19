@@ -28,6 +28,11 @@ typedef struct {
   double avg_risk;
 } CohortSummary;
 
+typedef struct {
+  const char *label;
+  double value;
+} Driver;
+
 static char *trim(char *s) {
   while (*s && isspace((unsigned char)*s)) s++;
   if (*s == 0) return s;
@@ -68,6 +73,58 @@ static double compute_risk(const Scholar *s) {
   score += survey_gap * 0.15;
   score += s->open_flags * 6.0;
   return clamp(score, 0.0, 100.0);
+}
+
+static int compare_driver_desc(const void *a, const void *b) {
+  const Driver *da = (const Driver *)a;
+  const Driver *db = (const Driver *)b;
+  if (da->value < db->value) return 1;
+  if (da->value > db->value) return -1;
+  return 0;
+}
+
+static void format_drivers(const Scholar *s, char *buffer, size_t size) {
+  Driver drivers[8];
+  int count = 0;
+
+  double gpa_gap = clamp(4.0 - s->gpa, 0.0, 4.0);
+  double attendance_gap = clamp(100.0 - s->attendance_rate, 0.0, 100.0);
+  double engagement_gap = clamp(100.0 - s->engagement_score, 0.0, 100.0);
+  double survey_gap = clamp(100.0 - s->survey_score, 0.0, 100.0);
+
+  double inactivity = s->days_inactive * 0.6;
+  double contact_gap = s->last_contact_days * 0.4;
+  double attendance = attendance_gap * 0.35;
+  double engagement = engagement_gap * 0.25;
+  double gpa = gpa_gap * 12.5;
+  double survey = survey_gap * 0.15;
+  double flags = s->open_flags * 6.0;
+
+  if (inactivity > 0.1) drivers[count++] = (Driver){"inactivity", inactivity};
+  if (contact_gap > 0.1) drivers[count++] = (Driver){"contact gap", contact_gap};
+  if (attendance > 0.1) drivers[count++] = (Driver){"attendance", attendance};
+  if (engagement > 0.1) drivers[count++] = (Driver){"engagement", engagement};
+  if (gpa > 0.1) drivers[count++] = (Driver){"gpa", gpa};
+  if (survey > 0.1) drivers[count++] = (Driver){"survey", survey};
+  if (flags > 0.1) drivers[count++] = (Driver){"open flags", flags};
+
+  if (count == 0) {
+    snprintf(buffer, size, "stable");
+    return;
+  }
+
+  qsort(drivers, count, sizeof(Driver), compare_driver_desc);
+
+  buffer[0] = '\0';
+  int max = count < 3 ? count : 3;
+  for (int i = 0; i < max; i++) {
+    char chunk[64];
+    snprintf(chunk, sizeof(chunk), "%s %.1f", drivers[i].label, drivers[i].value);
+    if (i > 0) {
+      strncat(buffer, "; ", size - strlen(buffer) - 1);
+    }
+    strncat(buffer, chunk, size - strlen(buffer) - 1);
+  }
 }
 
 static const char *risk_tier(double score) {
@@ -113,7 +170,7 @@ static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count,
 
 static void print_usage(const char *prog) {
   printf("Group Scholar Retention Watch\n\n");
-  printf("Usage: %s <csv-file> [-limit N] [-cohort NAME] [-export PATH] [-json] [-json-full]\n\n", prog);
+  printf("Usage: %s <csv-file> [-limit N] [-cohort NAME] [-export PATH] [-json] [-json-full] [-drivers]\n\n", prog);
   printf("CSV columns:\n");
   printf("  scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n\n");
 }
@@ -128,6 +185,7 @@ int main(int argc, char **argv) {
   int limit = 10;
   int json = 0;
   int json_full = 0;
+  int drivers = 0;
   const char *cohort_filter = NULL;
   const char *export_path = NULL;
   for (int i = 1; i < argc; i++) {
@@ -142,6 +200,8 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[i], "-json-full") == 0) {
       json = 1;
       json_full = 1;
+    } else if (strcmp(argv[i], "-drivers") == 0) {
+      drivers = 1;
     } else if (argv[i][0] != '-') {
       path = argv[i];
     }
@@ -232,14 +292,28 @@ int main(int argc, char **argv) {
       perror("Failed to write export");
       return 1;
     }
-    fprintf(out, "scholar_id,name,cohort,risk_score,tier,action,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n");
+    if (drivers) {
+      fprintf(out, "scholar_id,name,cohort,risk_score,tier,action,drivers,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n");
+    } else {
+      fprintf(out, "scholar_id,name,cohort,risk_score,tier,action,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n");
+    }
     for (int i = 0; i < count; i++) {
       Scholar *s = &scholars[i];
-      fprintf(out,
-              "%s,%s,%s,%.1f,%s,%s,%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%d\n",
-              s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score),
-              action_hint(s), s->days_inactive, s->attendance_rate, s->engagement_score,
-              s->gpa, s->last_contact_days, s->survey_score, s->open_flags);
+      if (drivers) {
+        char driver_text[256];
+        format_drivers(s, driver_text, sizeof(driver_text));
+        fprintf(out,
+                "%s,%s,%s,%.1f,%s,%s,%s,%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%d\n",
+                s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score),
+                action_hint(s), driver_text, s->days_inactive, s->attendance_rate, s->engagement_score,
+                s->gpa, s->last_contact_days, s->survey_score, s->open_flags);
+      } else {
+        fprintf(out,
+                "%s,%s,%s,%.1f,%s,%s,%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%d\n",
+                s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score),
+                action_hint(s), s->days_inactive, s->attendance_rate, s->engagement_score,
+                s->gpa, s->last_contact_days, s->survey_score, s->open_flags);
+      }
     }
     fclose(out);
   }
@@ -292,19 +366,36 @@ int main(int argc, char **argv) {
     int max = limit < count ? limit : count;
     for (int i = 0; i < max; i++) {
       Scholar *s = &scholars[i];
-      printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}%s\n",
-             s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s),
-             (i + 1 == max) ? "" : ",");
+      if (drivers) {
+        char driver_text[256];
+        format_drivers(s, driver_text, sizeof(driver_text));
+        printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\", \"drivers\": \"%s\"}%s\n",
+               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s), driver_text,
+               (i + 1 == max) ? "" : ",");
+      } else {
+        printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}%s\n",
+               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s),
+               (i + 1 == max) ? "" : ",");
+      }
     }
     printf("  ]");
     if (json_full) {
       printf(",\n  \"records\": [\n");
       for (int i = 0; i < count; i++) {
         Scholar *s = &scholars[i];
-        printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"days_inactive\": %.1f, \"attendance_rate\": %.1f, \"engagement_score\": %.1f, \"gpa\": %.2f, \"last_contact_days\": %.1f, \"survey_score\": %.1f, \"open_flags\": %d, \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}%s\n",
-               s->id, s->name, s->cohort, s->days_inactive, s->attendance_rate, s->engagement_score,
-               s->gpa, s->last_contact_days, s->survey_score, s->open_flags, s->risk_score,
-               risk_tier(s->risk_score), action_hint(s), (i + 1 == count) ? "" : ",");
+        if (drivers) {
+          char driver_text[256];
+          format_drivers(s, driver_text, sizeof(driver_text));
+          printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"days_inactive\": %.1f, \"attendance_rate\": %.1f, \"engagement_score\": %.1f, \"gpa\": %.2f, \"last_contact_days\": %.1f, \"survey_score\": %.1f, \"open_flags\": %d, \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\", \"drivers\": \"%s\"}%s\n",
+                 s->id, s->name, s->cohort, s->days_inactive, s->attendance_rate, s->engagement_score,
+                 s->gpa, s->last_contact_days, s->survey_score, s->open_flags, s->risk_score,
+                 risk_tier(s->risk_score), action_hint(s), driver_text, (i + 1 == count) ? "" : ",");
+        } else {
+          printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"days_inactive\": %.1f, \"attendance_rate\": %.1f, \"engagement_score\": %.1f, \"gpa\": %.2f, \"last_contact_days\": %.1f, \"survey_score\": %.1f, \"open_flags\": %d, \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}%s\n",
+                 s->id, s->name, s->cohort, s->days_inactive, s->attendance_rate, s->engagement_score,
+                 s->gpa, s->last_contact_days, s->survey_score, s->open_flags, s->risk_score,
+                 risk_tier(s->risk_score), action_hint(s), (i + 1 == count) ? "" : ",");
+        }
       }
       printf("  ]\n");
     } else {
@@ -328,8 +419,16 @@ int main(int argc, char **argv) {
     int max = limit < count ? limit : count;
     for (int i = 0; i < max; i++) {
       Scholar *s = &scholars[i];
-      printf("%2d. %-14s %-18s cohort %-10s risk %.1f (%s) -> %s\n",
-             i + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s));
+      if (drivers) {
+        char driver_text[256];
+        format_drivers(s, driver_text, sizeof(driver_text));
+        printf("%2d. %-14s %-18s cohort %-10s risk %.1f (%s) -> %s | drivers: %s\n",
+               i + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s),
+               driver_text);
+      } else {
+        printf("%2d. %-14s %-18s cohort %-10s risk %.1f (%s) -> %s\n",
+               i + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s));
+      }
     }
   }
 

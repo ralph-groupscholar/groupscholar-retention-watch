@@ -18,3 +18,7 @@
 - Added Postgres sync script to persist retention runs and scholar snapshots.
 - Documented production database sync workflow in README.
 - Initialized retention_watch schema and seeded sample run data in production database.
+
+## 2026-02-08
+- Added optional risk-driver insights for each scholar via new -drivers flag.
+- Extended CSV/JSON outputs and action queue to include top risk contributors when enabled.
