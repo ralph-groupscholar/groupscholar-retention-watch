@@ -22,3 +22,8 @@
 ## 2026-02-08
 - Added optional risk-driver insights for each scholar via new -drivers flag.
 - Extended CSV/JSON outputs and action queue to include top risk contributors when enabled.
+
+## 2026-02-08
+- Added cohort summary CSV export via -summary flag.
+- Documented summary export usage in README.
+- Rebuilt CLI after changes.

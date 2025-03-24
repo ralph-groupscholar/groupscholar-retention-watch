@@ -170,7 +170,7 @@ static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count,
 
 static void print_usage(const char *prog) {
   printf("Group Scholar Retention Watch\n\n");
-  printf("Usage: %s <csv-file> [-limit N] [-cohort NAME] [-export PATH] [-json] [-json-full] [-drivers]\n\n", prog);
+  printf("Usage: %s <csv-file> [-limit N] [-cohort NAME] [-export PATH] [-summary PATH] [-json] [-json-full] [-drivers]\n\n", prog);
   printf("CSV columns:\n");
   printf("  scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n\n");
 }
@@ -188,6 +188,7 @@ int main(int argc, char **argv) {
   int drivers = 0;
   const char *cohort_filter = NULL;
   const char *export_path = NULL;
+  const char *summary_path = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-limit") == 0 && i + 1 < argc) {
       limit = atoi(argv[++i]);
@@ -195,6 +196,8 @@ int main(int argc, char **argv) {
       cohort_filter = argv[++i];
     } else if (strcmp(argv[i], "-export") == 0 && i + 1 < argc) {
       export_path = argv[++i];
+    } else if (strcmp(argv[i], "-summary") == 0 && i + 1 < argc) {
+      summary_path = argv[++i];
     } else if (strcmp(argv[i], "-json") == 0) {
       json = 1;
     } else if (strcmp(argv[i], "-json-full") == 0) {
@@ -343,6 +346,22 @@ int main(int argc, char **argv) {
   }
 
   avg_risk = total_risk / (double)count;
+
+  if (summary_path) {
+    FILE *summary = fopen(summary_path, "w");
+    if (!summary) {
+      perror("Failed to write summary");
+      return 1;
+    }
+    fprintf(summary, "cohort,total,avg_risk,high,medium,low\n");
+    for (int i = 0; i < cohort_count; i++) {
+      CohortSummary *cs = &cohorts[i];
+      double avg = cs->avg_risk / (double)cs->total;
+      fprintf(summary, "%s,%d,%.1f,%d,%d,%d\n",
+              cs->name, cs->total, avg, cs->high, cs->medium, cs->low);
+    }
+    fclose(summary);
+  }
 
   if (json) {
     printf("{\n");
