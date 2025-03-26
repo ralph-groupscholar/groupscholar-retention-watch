@@ -27,3 +27,12 @@
 - Added cohort summary CSV export via -summary flag.
 - Documented summary export usage in README.
 - Rebuilt CLI after changes.
+
+## 2026-02-08
+- Added cohort focus ranking (top cohorts by average risk) to CLI output and JSON.
+- Refreshed README to document cohort focus output.
+
+## 2026-02-08
+- Added -min-risk filtering for action queue and CSV export output.
+- Included minimum risk threshold in JSON output and CLI action queue header.
+- Documented minimum risk usage and rebuilt the CLI.

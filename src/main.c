@@ -150,6 +150,16 @@ static int compare_risk_desc(const void *a, const void *b) {
   return 0;
 }
 
+static int compare_cohort_avg_desc(const void *a, const void *b) {
+  const CohortSummary *ca = *(const CohortSummary **)a;
+  const CohortSummary *cb = *(const CohortSummary **)b;
+  double avg_a = ca->avg_risk / (double)ca->total;
+  double avg_b = cb->avg_risk / (double)cb->total;
+  if (avg_a < avg_b) return 1;
+  if (avg_a > avg_b) return -1;
+  return 0;
+}
+
 static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count, const char *name) {
   for (int i = 0; i < *count; i++) {
     if (strcmp((*cohorts)[i].name, name) == 0) {
@@ -170,7 +180,7 @@ static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count,
 
 static void print_usage(const char *prog) {
   printf("Group Scholar Retention Watch\n\n");
-  printf("Usage: %s <csv-file> [-limit N] [-cohort NAME] [-export PATH] [-summary PATH] [-json] [-json-full] [-drivers]\n\n", prog);
+  printf("Usage: %s <csv-file> [-limit N] [-min-risk SCORE] [-cohort NAME] [-export PATH] [-summary PATH] [-json] [-json-full] [-drivers]\n\n", prog);
   printf("CSV columns:\n");
   printf("  scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n\n");
 }
@@ -183,6 +193,7 @@ int main(int argc, char **argv) {
 
   const char *path = NULL;
   int limit = 10;
+  double min_risk = 0.0;
   int json = 0;
   int json_full = 0;
   int drivers = 0;
@@ -192,6 +203,8 @@ int main(int argc, char **argv) {
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-limit") == 0 && i + 1 < argc) {
       limit = atoi(argv[++i]);
+    } else if (strcmp(argv[i], "-min-risk") == 0 && i + 1 < argc) {
+      min_risk = parse_double(argv[++i]);
     } else if (strcmp(argv[i], "-cohort") == 0 && i + 1 < argc) {
       cohort_filter = argv[++i];
     } else if (strcmp(argv[i], "-export") == 0 && i + 1 < argc) {
@@ -302,6 +315,9 @@ int main(int argc, char **argv) {
     }
     for (int i = 0; i < count; i++) {
       Scholar *s = &scholars[i];
+      if (s->risk_score < min_risk) {
+        continue;
+      }
       if (drivers) {
         char driver_text[256];
         format_drivers(s, driver_text, sizeof(driver_text));
@@ -347,6 +363,16 @@ int main(int argc, char **argv) {
 
   avg_risk = total_risk / (double)count;
 
+  CohortSummary **focus = NULL;
+  int focus_count = cohort_count;
+  if (cohort_count > 0) {
+    focus = malloc(sizeof(CohortSummary *) * cohort_count);
+    for (int i = 0; i < cohort_count; i++) {
+      focus[i] = &cohorts[i];
+    }
+    qsort(focus, cohort_count, sizeof(CohortSummary *), compare_cohort_avg_desc);
+  }
+
   if (summary_path) {
     FILE *summary = fopen(summary_path, "w");
     if (!summary) {
@@ -372,6 +398,7 @@ int main(int argc, char **argv) {
     printf("    \"medium\": %d,\n", medium);
     printf("    \"low\": %d\n", low);
     printf("  },\n");
+    printf("  \"action_queue_min_risk\": %.1f,\n", min_risk);
     printf("  \"cohorts\": [\n");
     for (int i = 0; i < cohort_count; i++) {
       CohortSummary *cs = &cohorts[i];
@@ -381,21 +408,39 @@ int main(int argc, char **argv) {
              (i + 1 == cohort_count) ? "" : ",");
     }
     printf("  ],\n");
+    printf("  \"cohort_focus\": [\n");
+    int focus_max = focus_count < 3 ? focus_count : 3;
+    for (int i = 0; i < focus_max; i++) {
+      CohortSummary *cs = focus[i];
+      double avg = cs->avg_risk / (double)cs->total;
+      printf("    {\"cohort\": \"%s\", \"avg_risk\": %.1f, \"total\": %d, \"high\": %d, \"medium\": %d, \"low\": %d}%s\n",
+             cs->name, avg, cs->total, cs->high, cs->medium, cs->low,
+             (i + 1 == focus_max) ? "" : ",");
+    }
+    printf("  ],\n");
     printf("  \"action_queue\": [\n");
-    int max = limit < count ? limit : count;
-    for (int i = 0; i < max; i++) {
+    int printed = 0;
+    for (int i = 0; i < count && printed < limit; i++) {
       Scholar *s = &scholars[i];
+      if (s->risk_score < min_risk) {
+        continue;
+      }
+      if (printed > 0) {
+        printf(",\n");
+      }
       if (drivers) {
         char driver_text[256];
         format_drivers(s, driver_text, sizeof(driver_text));
-        printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\", \"drivers\": \"%s\"}%s\n",
-               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s), driver_text,
-               (i + 1 == max) ? "" : ",");
+        printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\", \"drivers\": \"%s\"}",
+               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s), driver_text);
       } else {
-        printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}%s\n",
-               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s),
-               (i + 1 == max) ? "" : ",");
+        printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}",
+               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s));
       }
+      printed++;
+    }
+    if (printed > 0) {
+      printf("\n");
     }
     printf("  ]");
     if (json_full) {
@@ -434,20 +479,38 @@ int main(int argc, char **argv) {
              cs->name, cs->total, avg, cs->high, cs->medium, cs->low);
     }
 
-    printf("\nAction queue (top %d):\n", limit);
-    int max = limit < count ? limit : count;
-    for (int i = 0; i < max; i++) {
+    if (focus_count > 0) {
+      printf("\nCohort focus (top %d by avg risk):\n", focus_count < 3 ? focus_count : 3);
+      int focus_max = focus_count < 3 ? focus_count : 3;
+      for (int i = 0; i < focus_max; i++) {
+        CohortSummary *cs = focus[i];
+        double avg = cs->avg_risk / (double)cs->total;
+        printf("- %s: avg risk %.1f (high %d, medium %d, low %d)\n",
+               cs->name, avg, cs->high, cs->medium, cs->low);
+      }
+    }
+
+    printf("\nAction queue (top %d, min risk %.1f):\n", limit, min_risk);
+    int printed = 0;
+    for (int i = 0; i < count && printed < limit; i++) {
       Scholar *s = &scholars[i];
+      if (s->risk_score < min_risk) {
+        continue;
+      }
       if (drivers) {
         char driver_text[256];
         format_drivers(s, driver_text, sizeof(driver_text));
         printf("%2d. %-14s %-18s cohort %-10s risk %.1f (%s) -> %s | drivers: %s\n",
-               i + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s),
+               printed + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s),
                driver_text);
       } else {
         printf("%2d. %-14s %-18s cohort %-10s risk %.1f (%s) -> %s\n",
-               i + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s));
+               printed + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s));
       }
+      printed++;
+    }
+    if (printed == 0) {
+      printf("No scholars met the minimum risk threshold.\n");
     }
   }
 
@@ -456,6 +519,7 @@ int main(int argc, char **argv) {
     free(scholars[i].name);
     free(scholars[i].cohort);
   }
+  free(focus);
   for (int i = 0; i < cohort_count; i++) {
     free(cohorts[i].name);
   }

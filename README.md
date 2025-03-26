@@ -5,7 +5,9 @@ Retention Watch is a local-first CLI that turns a cohort CSV into a prioritized 
 ## Features
 - Risk scoring across inactivity, attendance, engagement, GPA, survey sentiment, and open flags
 - Cohort summaries with tier counts and average risk
+- Cohort focus list for top-risk cohorts
 - Action queue with suggested outreach focus
+- Minimum risk threshold for action queue/export filtering
 - JSON output for downstream tooling
 - Cohort filter and CSV export for ops handoffs
 - Cohort summary export for reporting
@@ -29,6 +31,12 @@ JSON output:
 
 ```bash
 ./retention-watch sample-data.csv -limit 5 -json
+```
+
+Filter action queue and exports to higher-risk scholars:
+
+```bash
+./retention-watch sample-data.csv -min-risk 60
 ```
 
 Export to CSV for downstream planning:
@@ -89,6 +97,7 @@ scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_c
 The CLI prints:
 - Total records, average risk, and tier counts
 - Cohort-level summaries
+- Cohort focus list (top cohorts by average risk)
 - A ranked action queue with suggested next steps
 
 ## Notes
