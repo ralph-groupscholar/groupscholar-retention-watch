@@ -36,3 +36,7 @@
 - Added -min-risk filtering for action queue and CSV export output.
 - Included minimum risk threshold in JSON output and CLI action queue header.
 - Documented minimum risk usage and rebuilt the CLI.
+
+## 2026-02-08
+- Added configurable risk tier thresholds with validation and JSON transparency.
+- Updated CLI output and README with threshold usage guidance.

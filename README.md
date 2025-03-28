@@ -12,6 +12,7 @@ Retention Watch is a local-first CLI that turns a cohort CSV into a prioritized 
 - Cohort filter and CSV export for ops handoffs
 - Cohort summary export for reporting
 - Driver insights for top risk contributors per scholar
+- Configurable risk tier thresholds for high/medium
 
 ## Getting Started
 
@@ -37,6 +38,12 @@ Filter action queue and exports to higher-risk scholars:
 
 ```bash
 ./retention-watch sample-data.csv -min-risk 60
+```
+
+Adjust the tier thresholds for high/medium risk:
+
+```bash
+./retention-watch sample-data.csv -high-threshold 70 -medium-threshold 45
 ```
 
 Export to CSV for downstream planning:

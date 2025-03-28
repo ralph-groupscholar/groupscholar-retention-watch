@@ -127,9 +127,9 @@ static void format_drivers(const Scholar *s, char *buffer, size_t size) {
   }
 }
 
-static const char *risk_tier(double score) {
-  if (score >= 75.0) return "high";
-  if (score >= 50.0) return "medium";
+static const char *risk_tier(double score, double high_threshold, double medium_threshold) {
+  if (score >= high_threshold) return "high";
+  if (score >= medium_threshold) return "medium";
   return "low";
 }
 
@@ -180,7 +180,7 @@ static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count,
 
 static void print_usage(const char *prog) {
   printf("Group Scholar Retention Watch\n\n");
-  printf("Usage: %s <csv-file> [-limit N] [-min-risk SCORE] [-cohort NAME] [-export PATH] [-summary PATH] [-json] [-json-full] [-drivers]\n\n", prog);
+  printf("Usage: %s <csv-file> [-limit N] [-min-risk SCORE] [-cohort NAME] [-export PATH] [-summary PATH] [-json] [-json-full] [-drivers] [-high-threshold SCORE] [-medium-threshold SCORE]\n\n", prog);
   printf("CSV columns:\n");
   printf("  scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n\n");
 }
@@ -194,6 +194,8 @@ int main(int argc, char **argv) {
   const char *path = NULL;
   int limit = 10;
   double min_risk = 0.0;
+  double high_threshold = 75.0;
+  double medium_threshold = 50.0;
   int json = 0;
   int json_full = 0;
   int drivers = 0;
@@ -218,6 +220,10 @@ int main(int argc, char **argv) {
       json_full = 1;
     } else if (strcmp(argv[i], "-drivers") == 0) {
       drivers = 1;
+    } else if (strcmp(argv[i], "-high-threshold") == 0 && i + 1 < argc) {
+      high_threshold = parse_double(argv[++i]);
+    } else if (strcmp(argv[i], "-medium-threshold") == 0 && i + 1 < argc) {
+      medium_threshold = parse_double(argv[++i]);
     } else if (argv[i][0] != '-') {
       path = argv[i];
     }
@@ -225,6 +231,13 @@ int main(int argc, char **argv) {
 
   if (!path) {
     print_usage(argv[0]);
+    return 1;
+  }
+
+  high_threshold = clamp(high_threshold, 0.0, 100.0);
+  medium_threshold = clamp(medium_threshold, 0.0, 100.0);
+  if (high_threshold <= medium_threshold) {
+    fprintf(stderr, "Invalid thresholds: high must be greater than medium.\n");
     return 1;
   }
 
@@ -323,13 +336,13 @@ int main(int argc, char **argv) {
         format_drivers(s, driver_text, sizeof(driver_text));
         fprintf(out,
                 "%s,%s,%s,%.1f,%s,%s,%s,%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%d\n",
-                s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score),
+                s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score, high_threshold, medium_threshold),
                 action_hint(s), driver_text, s->days_inactive, s->attendance_rate, s->engagement_score,
                 s->gpa, s->last_contact_days, s->survey_score, s->open_flags);
       } else {
         fprintf(out,
                 "%s,%s,%s,%.1f,%s,%s,%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%d\n",
-                s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score),
+                s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score, high_threshold, medium_threshold),
                 action_hint(s), s->days_inactive, s->attendance_rate, s->engagement_score,
                 s->gpa, s->last_contact_days, s->survey_score, s->open_flags);
       }
@@ -348,7 +361,7 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < count; i++) {
     total_risk += scholars[i].risk_score;
-    const char *tier = risk_tier(scholars[i].risk_score);
+    const char *tier = risk_tier(scholars[i].risk_score, high_threshold, medium_threshold);
     if (strcmp(tier, "high") == 0) high++;
     else if (strcmp(tier, "medium") == 0) medium++;
     else low++;
@@ -393,6 +406,7 @@ int main(int argc, char **argv) {
     printf("{\n");
     printf("  \"total\": %d,\n", count);
     printf("  \"average_risk\": %.1f,\n", avg_risk);
+    printf("  \"risk_thresholds\": {\"high\": %.1f, \"medium\": %.1f},\n", high_threshold, medium_threshold);
     printf("  \"tiers\": {\n");
     printf("    \"high\": %d,\n", high);
     printf("    \"medium\": %d,\n", medium);
@@ -432,10 +446,10 @@ int main(int argc, char **argv) {
         char driver_text[256];
         format_drivers(s, driver_text, sizeof(driver_text));
         printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\", \"drivers\": \"%s\"}",
-               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s), driver_text);
+               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score, high_threshold, medium_threshold), action_hint(s), driver_text);
       } else {
         printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}",
-               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s));
+               s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score, high_threshold, medium_threshold), action_hint(s));
       }
       printed++;
     }
@@ -453,12 +467,12 @@ int main(int argc, char **argv) {
           printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"days_inactive\": %.1f, \"attendance_rate\": %.1f, \"engagement_score\": %.1f, \"gpa\": %.2f, \"last_contact_days\": %.1f, \"survey_score\": %.1f, \"open_flags\": %d, \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\", \"drivers\": \"%s\"}%s\n",
                  s->id, s->name, s->cohort, s->days_inactive, s->attendance_rate, s->engagement_score,
                  s->gpa, s->last_contact_days, s->survey_score, s->open_flags, s->risk_score,
-                 risk_tier(s->risk_score), action_hint(s), driver_text, (i + 1 == count) ? "" : ",");
+                 risk_tier(s->risk_score, high_threshold, medium_threshold), action_hint(s), driver_text, (i + 1 == count) ? "" : ",");
         } else {
           printf("    {\"scholar_id\": \"%s\", \"name\": \"%s\", \"cohort\": \"%s\", \"days_inactive\": %.1f, \"attendance_rate\": %.1f, \"engagement_score\": %.1f, \"gpa\": %.2f, \"last_contact_days\": %.1f, \"survey_score\": %.1f, \"open_flags\": %d, \"risk\": %.1f, \"tier\": \"%s\", \"action\": \"%s\"}%s\n",
                  s->id, s->name, s->cohort, s->days_inactive, s->attendance_rate, s->engagement_score,
                  s->gpa, s->last_contact_days, s->survey_score, s->open_flags, s->risk_score,
-                 risk_tier(s->risk_score), action_hint(s), (i + 1 == count) ? "" : ",");
+                 risk_tier(s->risk_score, high_threshold, medium_threshold), action_hint(s), (i + 1 == count) ? "" : ",");
         }
       }
       printf("  ]\n");
@@ -469,7 +483,8 @@ int main(int argc, char **argv) {
   } else {
     printf("Group Scholar Retention Watch\n\n");
     printf("Records: %d  Average risk: %.1f  Skipped rows: %d\n", count, avg_risk, skipped);
-    printf("Risk tiers: high %d | medium %d | low %d\n\n", high, medium, low);
+    printf("Risk tiers (high >= %.1f, medium >= %.1f): high %d | medium %d | low %d\n\n",
+           high_threshold, medium_threshold, high, medium, low);
 
     printf("Cohort summary:\n");
     for (int i = 0; i < cohort_count; i++) {
@@ -501,11 +516,11 @@ int main(int argc, char **argv) {
         char driver_text[256];
         format_drivers(s, driver_text, sizeof(driver_text));
         printf("%2d. %-14s %-18s cohort %-10s risk %.1f (%s) -> %s | drivers: %s\n",
-               printed + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s),
+               printed + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score, high_threshold, medium_threshold), action_hint(s),
                driver_text);
       } else {
         printf("%2d. %-14s %-18s cohort %-10s risk %.1f (%s) -> %s\n",
-               printed + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score), action_hint(s));
+               printed + 1, s->id, s->name, s->cohort, s->risk_score, risk_tier(s->risk_score, high_threshold, medium_threshold), action_hint(s));
       }
       printed++;
     }
