@@ -29,6 +29,15 @@ typedef struct {
 } CohortSummary;
 
 typedef struct {
+  char *action;
+  int total;
+  int high;
+  int medium;
+  int low;
+  double avg_risk;
+} ActionSummary;
+
+typedef struct {
   const char *label;
   double value;
 } Driver;
@@ -160,6 +169,16 @@ static int compare_cohort_avg_desc(const void *a, const void *b) {
   return 0;
 }
 
+static int compare_action_avg_desc(const void *a, const void *b) {
+  const ActionSummary *aa = *(const ActionSummary **)a;
+  const ActionSummary *ab = *(const ActionSummary **)b;
+  double avg_a = aa->avg_risk / (double)aa->total;
+  double avg_b = ab->avg_risk / (double)ab->total;
+  if (avg_a < avg_b) return 1;
+  if (avg_a > avg_b) return -1;
+  return 0;
+}
+
 static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count, const char *name) {
   for (int i = 0; i < *count; i++) {
     if (strcmp((*cohorts)[i].name, name) == 0) {
@@ -178,9 +197,27 @@ static CohortSummary *find_or_create_cohort(CohortSummary **cohorts, int *count,
   return cs;
 }
 
+static ActionSummary *find_or_create_action(ActionSummary **actions, int *count, const char *name) {
+  for (int i = 0; i < *count; i++) {
+    if (strcmp((*actions)[i].action, name) == 0) {
+      return &(*actions)[i];
+    }
+  }
+  *actions = realloc(*actions, sizeof(ActionSummary) * (*count + 1));
+  ActionSummary *as = &(*actions)[*count];
+  as->action = strdup(name);
+  as->total = 0;
+  as->high = 0;
+  as->medium = 0;
+  as->low = 0;
+  as->avg_risk = 0.0;
+  (*count)++;
+  return as;
+}
+
 static void print_usage(const char *prog) {
   printf("Group Scholar Retention Watch\n\n");
-  printf("Usage: %s <csv-file> [-limit N] [-min-risk SCORE] [-cohort NAME] [-export PATH] [-summary PATH] [-json] [-json-full] [-drivers] [-high-threshold SCORE] [-medium-threshold SCORE]\n\n", prog);
+  printf("Usage: %s <csv-file> [-limit N] [-min-risk SCORE] [-cohort NAME] [-export PATH] [-summary PATH] [-actions PATH] [-json] [-json-full] [-drivers] [-high-threshold SCORE] [-medium-threshold SCORE]\n\n", prog);
   printf("CSV columns:\n");
   printf("  scholar_id,name,cohort,days_inactive,attendance_rate,engagement_score,gpa,last_contact_days,survey_score,open_flags\n\n");
 }
@@ -202,6 +239,7 @@ int main(int argc, char **argv) {
   const char *cohort_filter = NULL;
   const char *export_path = NULL;
   const char *summary_path = NULL;
+  const char *action_path = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-limit") == 0 && i + 1 < argc) {
       limit = atoi(argv[++i]);
@@ -213,6 +251,8 @@ int main(int argc, char **argv) {
       export_path = argv[++i];
     } else if (strcmp(argv[i], "-summary") == 0 && i + 1 < argc) {
       summary_path = argv[++i];
+    } else if (strcmp(argv[i], "-actions") == 0 && i + 1 < argc) {
+      action_path = argv[++i];
     } else if (strcmp(argv[i], "-json") == 0) {
       json = 1;
     } else if (strcmp(argv[i], "-json-full") == 0) {
@@ -358,6 +398,8 @@ int main(int argc, char **argv) {
 
   CohortSummary *cohorts = NULL;
   int cohort_count = 0;
+  ActionSummary *actions = NULL;
+  int action_count = 0;
 
   for (int i = 0; i < count; i++) {
     total_risk += scholars[i].risk_score;
@@ -372,6 +414,14 @@ int main(int argc, char **argv) {
     if (strcmp(tier, "high") == 0) cs->high++;
     else if (strcmp(tier, "medium") == 0) cs->medium++;
     else cs->low++;
+
+    const char *action = action_hint(&scholars[i]);
+    ActionSummary *as = find_or_create_action(&actions, &action_count, action);
+    as->total++;
+    as->avg_risk += scholars[i].risk_score;
+    if (strcmp(tier, "high") == 0) as->high++;
+    else if (strcmp(tier, "medium") == 0) as->medium++;
+    else as->low++;
   }
 
   avg_risk = total_risk / (double)count;
@@ -384,6 +434,16 @@ int main(int argc, char **argv) {
       focus[i] = &cohorts[i];
     }
     qsort(focus, cohort_count, sizeof(CohortSummary *), compare_cohort_avg_desc);
+  }
+
+  ActionSummary **action_focus = NULL;
+  int action_focus_count = action_count;
+  if (action_count > 0) {
+    action_focus = malloc(sizeof(ActionSummary *) * action_count);
+    for (int i = 0; i < action_count; i++) {
+      action_focus[i] = &actions[i];
+    }
+    qsort(action_focus, action_count, sizeof(ActionSummary *), compare_action_avg_desc);
   }
 
   if (summary_path) {
@@ -400,6 +460,22 @@ int main(int argc, char **argv) {
               cs->name, cs->total, avg, cs->high, cs->medium, cs->low);
     }
     fclose(summary);
+  }
+
+  if (action_path) {
+    FILE *action_out = fopen(action_path, "w");
+    if (!action_out) {
+      perror("Failed to write action summary");
+      return 1;
+    }
+    fprintf(action_out, "action,total,avg_risk,high,medium,low\n");
+    for (int i = 0; i < action_count; i++) {
+      ActionSummary *as = &actions[i];
+      double avg = as->avg_risk / (double)as->total;
+      fprintf(action_out, "%s,%d,%.1f,%d,%d,%d\n",
+              as->action, as->total, avg, as->high, as->medium, as->low);
+    }
+    fclose(action_out);
   }
 
   if (json) {
@@ -430,6 +506,15 @@ int main(int argc, char **argv) {
       printf("    {\"cohort\": \"%s\", \"avg_risk\": %.1f, \"total\": %d, \"high\": %d, \"medium\": %d, \"low\": %d}%s\n",
              cs->name, avg, cs->total, cs->high, cs->medium, cs->low,
              (i + 1 == focus_max) ? "" : ",");
+    }
+    printf("  ],\n");
+    printf("  \"actions\": [\n");
+    for (int i = 0; i < action_count; i++) {
+      ActionSummary *as = &actions[i];
+      double avg = as->avg_risk / (double)as->total;
+      printf("    {\"action\": \"%s\", \"total\": %d, \"avg_risk\": %.1f, \"high\": %d, \"medium\": %d, \"low\": %d}%s\n",
+             as->action, as->total, avg, as->high, as->medium, as->low,
+             (i + 1 == action_count) ? "" : ",");
     }
     printf("  ],\n");
     printf("  \"action_queue\": [\n");
@@ -505,6 +590,16 @@ int main(int argc, char **argv) {
       }
     }
 
+    if (action_focus_count > 0) {
+      printf("\nAction summary:\n");
+      for (int i = 0; i < action_focus_count; i++) {
+        ActionSummary *as = action_focus[i];
+        double avg = as->avg_risk / (double)as->total;
+        printf("- %s: total %d, avg risk %.1f (high %d, medium %d, low %d)\n",
+               as->action, as->total, avg, as->high, as->medium, as->low);
+      }
+    }
+
     printf("\nAction queue (top %d, min risk %.1f):\n", limit, min_risk);
     int printed = 0;
     for (int i = 0; i < count && printed < limit; i++) {
@@ -535,10 +630,15 @@ int main(int argc, char **argv) {
     free(scholars[i].cohort);
   }
   free(focus);
+  free(action_focus);
   for (int i = 0; i < cohort_count; i++) {
     free(cohorts[i].name);
   }
   free(cohorts);
+  for (int i = 0; i < action_count; i++) {
+    free(actions[i].action);
+  }
+  free(actions);
   free(scholars);
 
   return 0;

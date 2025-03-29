@@ -40,3 +40,8 @@
 ## 2026-02-08
 - Added configurable risk tier thresholds with validation and JSON transparency.
 - Updated CLI output and README with threshold usage guidance.
+
+## 2026-02-08
+- Added action summary rollups grouped by recommended outreach action.
+- Added CSV export for action summary and included actions in JSON output.
+- Updated README with action summary export usage.
